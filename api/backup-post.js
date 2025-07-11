@@ -1,9 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import cors from 'cors';
 
-// Initialize CORS middleware
 const corsMiddleware = cors();
-
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const GITHUB_REPO_CONFIG = {
     owner: 'dms-eshop',
@@ -11,21 +9,14 @@ const GITHUB_REPO_CONFIG = {
 };
 
 export default async function handler(req, res) {
-    // Run CORS middleware
     await new Promise((resolve, reject) => {
-        corsMiddleware(req, res, (result) => {
-            if (result instanceof Error) {
-                return reject(result);
-            }
-            return resolve(result);
-        });
+        corsMiddleware(req, res, (result) => result instanceof Error ? reject(result) : resolve(result));
     });
 
     if (req.method !== 'POST') {
-        return res.status(405).json({ message: 'Method not allowed' });
+        return res.status(405).json({ message: 'Method Not Allowed' });
     }
     
-    // Vercel automatically parses JSON body unless disabled
     const { fileName, content } = req.body;
     if (!fileName || !content) {
         return res.status(400).json({ message: 'File name or content is missing.' });
@@ -46,6 +37,6 @@ export default async function handler(req, res) {
 
     } catch (error) {
         console.error('API Error:', error);
-        res.status(500).json({ message: 'Failed to backup post due to a server error.' });
+        res.status(500).json({ message: 'Failed to backup post.' });
     }
 }
