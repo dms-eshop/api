@@ -1,0 +1,10 @@
+{
+  "name": "dms-eshop-api-backend",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@octokit/rest": "^20.0.1",
+    "cors": "^2.8.5",
+    "formidable": "^3.5.1"
+  }
+}
