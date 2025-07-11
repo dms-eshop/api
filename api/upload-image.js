@@ -1,9 +1,9 @@
 import { Octokit } from '@octokit/rest';
 import formidable from 'formidable';
 import fs from 'fs/promises';
+import path from 'path';
 import cors from 'cors';
 
-// Initialize CORS middleware
 const corsMiddleware = cors();
 
 export const config = {
@@ -17,14 +17,8 @@ const GITHUB_REPO_CONFIG = {
 };
 
 export default async function handler(req, res) {
-    // Run CORS middleware
     await new Promise((resolve, reject) => {
-        corsMiddleware(req, res, (result) => {
-            if (result instanceof Error) {
-                return reject(result);
-            }
-            return resolve(result);
-        });
+        corsMiddleware(req, res, (result) => result instanceof Error ? reject(result) : resolve(result));
     });
 
     if (req.method !== 'POST') {
@@ -34,16 +28,20 @@ export default async function handler(req, res) {
     try {
         const form = formidable({});
         const [fields, files] = await form.parse(req);
-        const imageFile = files.image[0];
         
-        if (!imageFile) {
-            return res.status(400).json({ message: 'No image file provided.' });
+        const imageFile = files.image[0];
+        const fileId = fields.fileId[0];
+
+        if (!imageFile || !fileId) {
+            return res.status(400).json({ message: 'Image file or File ID is missing.' });
         }
 
+        const fileExtension = path.extname(imageFile.originalFilename);
+        const fileName = `${fileId}${fileExtension}`;
+        const filePath = `public/image/generated/${fileName}`;
+        
         const fileContent = await fs.readFile(imageFile.filepath);
         const contentEncoded = fileContent.toString('base64');
-        const fileName = `${Date.now()}-${imageFile.originalFilename}`;
-        const filePath = `public/image/generated/${fileName}`;
 
         await octokit.repos.createOrUpdateFileContents({
             ...GITHUB_REPO_CONFIG,
@@ -57,6 +55,6 @@ export default async function handler(req, res) {
 
     } catch (error) {
         console.error('API Error:', error);
-        res.status(500).json({ message: 'Failed to upload image due to a server error.' });
+        res.status(500).json({ message: 'Failed to upload image.' });
     }
 }
