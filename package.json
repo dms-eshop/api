@@ -5,6 +5,7 @@
   "dependencies": {
     "@octokit/rest": "^20.0.1",
     "cors": "^2.8.5",
-    "formidable": "^3.5.1"
+    "formidable": "^3.5.1",
+    "sharp": "^0.33.4" 
   }
 }
