@@ -25,7 +25,6 @@ const uploadToGitHub = async (octokit, fileBuffer, owner, repo) => {
     const webpBuffer = await sharp(fileBuffer).webp({ quality: 80 }).toBuffer();
     const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.webp`;
     const githubFilePath = `public/image/generated/${fileName}`;
-
     await octokit.repos.createOrUpdateFileContents({
         owner,
         repo,
@@ -45,7 +44,6 @@ async function handler(req, res) {
              return res.status(500).json({ success: false, message: 'Server environment variable GITHUB_TOKEN is not configured.' });
         }
 
-        // Hardcoded repository and domain details
         const GITHUB_OWNER = 'dms-eshop';
         const GITHUB_REPO = 'cloud';
         const CUSTOM_DOMAIN = 'https://storage.dms-eshop.com';
@@ -60,7 +58,6 @@ async function handler(req, res) {
         const mainImageContent = require('fs').readFileSync(mainImageFile.filepath);
         const mainImagePath = await uploadToGitHub(octokit, mainImageContent, GITHUB_OWNER, GITHUB_REPO);
         
-        // Constructing the URL with your custom domain
         const mainImageUrl = `${CUSTOM_DOMAIN}/${mainImagePath}`;
 
         let thumbImageUrls = [];
@@ -72,7 +69,6 @@ async function handler(req, res) {
             });
             const thumbPaths = await Promise.all(uploadPromises);
             
-            // Constructing thumbnail URLs with your custom domain
             thumbImageUrls = thumbPaths.map(path => `${CUSTOM_DOMAIN}/${path}`);
         }
 
