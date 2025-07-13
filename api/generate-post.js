@@ -30,7 +30,7 @@ const uploadToGitHub = async (octokit, fileBuffer, owner, repo) => {
         owner,
         repo,
         path: githubFilePath,
-        message: `feat: Add product image ${fileName}`,
+        message: `feat: Add generated image ${fileName}`,
         content: webpBuffer.toString('base64'),
     });
 
@@ -39,23 +39,30 @@ const uploadToGitHub = async (octokit, fileBuffer, owner, repo) => {
 
 async function handler(req, res) {
     try {
-        const { GITHUB_TOKEN, CUSTOM_DOMAIN } = process.env;
+        const { GITHUB_TOKEN } = process.env;
+        
+        if (!GITHUB_TOKEN) {
+             return res.status(500).json({ success: false, message: 'Server environment variable GITHUB_TOKEN is not configured.' });
+        }
+
+        // Hardcoded repository and domain details
         const GITHUB_OWNER = 'dms-eshop';
         const GITHUB_REPO = 'cloud';
+        const CUSTOM_DOMAIN = 'https://storage.dms-eshop.com';
         
         const octokit = new Octokit({ auth: GITHUB_TOKEN });
-        const { fields, files } = await parseForm(req);
+        const { files } = await parseForm(req);
 
-        // Upload Main Image
         const mainImageFile = files.mainImage?.[0];
         if (!mainImageFile) {
             return res.status(400).json({ message: 'Main image is required.' });
         }
         const mainImageContent = require('fs').readFileSync(mainImageFile.filepath);
         const mainImagePath = await uploadToGitHub(octokit, mainImageContent, GITHUB_OWNER, GITHUB_REPO);
+        
+        // Constructing the URL with your custom domain
         const mainImageUrl = `${CUSTOM_DOMAIN}/${mainImagePath}`;
 
-        // Upload Thumbnail Images
         let thumbImageUrls = [];
         const thumbImageFiles = files.thumbImages;
         if (thumbImageFiles) {
@@ -64,10 +71,11 @@ async function handler(req, res) {
                 return uploadToGitHub(octokit, content, GITHUB_OWNER, GITHUB_REPO);
             });
             const thumbPaths = await Promise.all(uploadPromises);
+            
+            // Constructing thumbnail URLs with your custom domain
             thumbImageUrls = thumbPaths.map(path => `${CUSTOM_DOMAIN}/${path}`);
         }
 
-        // Send back the URLs
         res.status(200).json({
             success: true,
             mainImageUrl,
