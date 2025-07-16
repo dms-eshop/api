@@ -1,4 +1,4 @@
-// api/genpost.js
+// api/
 const { Octokit } = require('@octokit/rest');
 const sharp = require('sharp');
 const { formidable } = require('formidable');
@@ -41,6 +41,8 @@ const uploadToGitHub = async (octokit, fileBuffer, owner, repo, altText = '') =>
     const githubFilePath = `public/image/generated/${fileName}`; // Define the path in the GitHub repo
 
     // Create or update the file content in the GitHub repository
+    // Since we are creating unique filenames, we are always doing a 'create' operation.
+    // The 'sha' parameter is omitted because we are not updating an existing file with a known SHA.
     await octokit.repos.createOrUpdateFileContents({
         owner,
         repo,
@@ -77,6 +79,7 @@ async function handler(req, res) {
         const octokit = new Octokit({ auth: GITHUB_TOKEN }); // Initialize Octokit with the token
         const { fields, files } = await parseForm(req); // Parse the incoming form data to get fields and files
 
+        // Ensure productTitle is a string, handle cases where formidable might return an array
         const productTitle = Array.isArray(fields.title) ? fields.title[0] : fields.title || 'Product Image';
 
         // Handle the main product image
