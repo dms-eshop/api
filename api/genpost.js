@@ -1,4 +1,4 @@
-// api/
+// api/genpost.js
 const { Octokit } = require('@octokit/rest');
 const sharp = require('sharp');
 const { formidable } = require('formidable');
@@ -36,8 +36,10 @@ const uploadToGitHub = async (octokit, fileBuffer, owner, repo, altText = '') =>
     // Convert the image buffer to WebP format for optimization
     // quality: 80 balances file size and visual quality
     const webpBuffer = await sharp(fileBuffer).webp({ quality: 80 }).toBuffer();
-    // Generate a unique filename using timestamp and a random number
-    const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.webp`;
+    
+    // Generate a random 10-digit number for the filename
+    const randomNumber = Math.floor(1000000000 + Math.random() * 9000000000); // Generates a 10-digit number
+    const fileName = `${randomNumber}.webp`;
     const githubFilePath = `public/image/generated/${fileName}`; // Define the path in the GitHub repo
 
     // Create or update the file content in the GitHub repository
@@ -106,7 +108,7 @@ async function handler(req, res) {
             // Create an array of promises for uploading each thumbnail
             const uploadPromises = thumbImageFiles.map((file, index) => {
                 const content = fs.readFileSync(file.filepath); // Read thumbnail content
-                return uploadToGitHub(octokit, content, GITHUB_OWNER, GITHUB_REPO, `${productTitle} Thumbnail ${index + 1}`); // Upload thumbnail
+                return uploadToGitHub(octokit, content, GITHUB_OWNER, GWEB_REPO, `${productTitle} Thumbnail ${index + 1}`); // Upload thumbnail
             });
             // Wait for all thumbnail uploads to complete
             const thumbPaths = await Promise.all(uploadPromises);
