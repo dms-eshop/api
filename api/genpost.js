@@ -1,4 +1,3 @@
-// api/genpost.js
 const { Octokit } = require('@octokit/rest');
 const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
@@ -17,12 +16,12 @@ const allowCors = (fn) => async (req, res) => {
     return await fn(req, res);
 };
 
-// Parse form data using formidable
+// Form parser
 const parseForm = (req) => new Promise((resolve, reject) => {
     const form = formidable({ multiples: true });
     form.parse(req, (err, fields, files) => {
         if (err) {
-            console.error('Formidable parsing error:', err);
+            console.error('Form parsing error:', err);
             reject(new Error('Failed to parse form data.'));
         } else {
             resolve({ fields, files });
@@ -30,18 +29,20 @@ const parseForm = (req) => new Promise((resolve, reject) => {
     });
 });
 
-// Upload image to GitHub using UUID filenames (no SHA)
+// Upload to GitHub
 const uploadToGitHub = async (octokit, fileBuffer, owner, repo, altText = '') => {
     try {
         const webpBuffer = await sharp(fileBuffer).webp({ quality: 80 }).toBuffer();
-        const fileName = `${uuidv4()}.webp`;
+        const fileName = `${uuidv4()}.webp`; // ✅ Unique filename
         const githubFilePath = `public/image/generated/${fileName}`;
+
+        console.log('Uploading file:', githubFilePath); // ✅ Debug log
 
         await octokit.repos.createOrUpdateFileContents({
             owner,
             repo,
             path: githubFilePath,
-            message: `feat: Add generated image ${fileName} (${altText.substring(0, 50)}...)`,
+            message: `feat: Add image ${fileName} (${altText.substring(0, 50)}...)`,
             content: webpBuffer.toString('base64'),
             committer: {
                 name: 'Vercel Post Generator',
@@ -54,19 +55,18 @@ const uploadToGitHub = async (octokit, fileBuffer, owner, repo, altText = '') =>
         });
 
         return githubFilePath;
-    } catch (uploadError) {
-        console.error('Error uploading to GitHub:', uploadError);
-        throw new Error(`Failed to upload image to GitHub: ${uploadError.message || uploadError}`);
+    } catch (err) {
+        console.error('GitHub upload error:', err);
+        throw new Error(`Failed to upload image to GitHub: ${err.message || err}`);
     }
 };
 
-// Main handler function
+// Main handler
 async function handler(req, res) {
     try {
         const { GITHUB_TOKEN } = process.env;
-
         if (!GITHUB_TOKEN) {
-            return res.status(500).json({ success: false, message: 'Server environment variable GITHUB_TOKEN is not configured.' });
+            return res.status(500).json({ success: false, message: 'GITHUB_TOKEN not configured.' });
         }
 
         const GITHUB_OWNER = 'dms-eshop';
@@ -74,9 +74,9 @@ async function handler(req, res) {
         const CUSTOM_DOMAIN = 'https://storage.dms-eshop.com';
 
         const octokit = new Octokit({ auth: GITHUB_TOKEN });
-        const { fields, files } = await parseForm(req);
 
-        const productTitle = Array.isArray(fields.title) ? fields.title[0] : fields.title || 'Product Image';
+        const { fields, files } = await parseForm(req);
+        const productTitle = Array.isArray(fields.title) ? fields.title[0] : fields.title || 'Product';
 
         const mainImageFile = files.mainImage?.[0];
         if (!mainImageFile) {
@@ -95,6 +95,7 @@ async function handler(req, res) {
                 const content = fs.readFileSync(file.filepath);
                 return uploadToGitHub(octokit, content, GITHUB_OWNER, GITHUB_REPO, `${productTitle} Thumbnail ${index + 1}`);
             });
+
             const thumbPaths = await Promise.all(uploadPromises);
             thumbImageUrls = thumbPaths.map(path => `${CUSTOM_DOMAIN}/${path}`);
         }
@@ -106,8 +107,8 @@ async function handler(req, res) {
         });
 
     } catch (error) {
-        console.error('Processing Error in handler:', error);
-        res.status(500).json({ success: false, message: error.message || 'An internal server error occurred.' });
+        console.error('Handler error:', error);
+        res.status(500).json({ success: false, message: error.message || 'Internal server error' });
     }
 }
 
