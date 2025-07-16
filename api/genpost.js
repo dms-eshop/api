@@ -1,6 +1,7 @@
 // api/genpost.js
 const { Octokit } = require('@octokit/rest');
 const sharp = require('sharp');
+const { v4: uuidv4 } = require('uuid');
 const { formidable } = require('formidable');
 const fs = require('fs');
 
@@ -16,7 +17,7 @@ const allowCors = (fn) => async (req, res) => {
     return await fn(req, res);
 };
 
-// Form parser
+// Parse form data using formidable
 const parseForm = (req) => new Promise((resolve, reject) => {
     const form = formidable({ multiples: true });
     form.parse(req, (err, fields, files) => {
@@ -29,31 +30,12 @@ const parseForm = (req) => new Promise((resolve, reject) => {
     });
 });
 
-// GitHub uploader with SHA check
+// Upload image to GitHub using UUID filenames (no SHA)
 const uploadToGitHub = async (octokit, fileBuffer, owner, repo, altText = '') => {
     try {
         const webpBuffer = await sharp(fileBuffer).webp({ quality: 80 }).toBuffer();
-        const randomNumber = Math.floor(1000000000 + Math.random() * 9000000000);
-        const fileName = `${randomNumber}.webp`;
+        const fileName = `${uuidv4()}.webp`;
         const githubFilePath = `public/image/generated/${fileName}`;
-
-        let existingFileSha = null;
-
-        try {
-            const { data: existingFile } = await octokit.repos.getContent({
-                owner,
-                repo,
-                path: githubFilePath,
-            });
-            if (existingFile && existingFile.sha) {
-                existingFileSha = existingFile.sha;
-            }
-        } catch (err) {
-            if (err.status !== 404) {
-                console.error('Error checking for existing file:', err);
-                throw new Error('Failed to check for existing file on GitHub');
-            }
-        }
 
         await octokit.repos.createOrUpdateFileContents({
             owner,
@@ -61,7 +43,6 @@ const uploadToGitHub = async (octokit, fileBuffer, owner, repo, altText = '') =>
             path: githubFilePath,
             message: `feat: Add generated image ${fileName} (${altText.substring(0, 50)}...)`,
             content: webpBuffer.toString('base64'),
-            sha: existingFileSha || undefined,
             committer: {
                 name: 'Vercel Post Generator',
                 email: 'vercel-bot@dms-eshop.com',
@@ -79,10 +60,11 @@ const uploadToGitHub = async (octokit, fileBuffer, owner, repo, altText = '') =>
     }
 };
 
-// Main API handler
+// Main handler function
 async function handler(req, res) {
     try {
         const { GITHUB_TOKEN } = process.env;
+
         if (!GITHUB_TOKEN) {
             return res.status(500).json({ success: false, message: 'Server environment variable GITHUB_TOKEN is not configured.' });
         }
@@ -95,8 +77,8 @@ async function handler(req, res) {
         const { fields, files } = await parseForm(req);
 
         const productTitle = Array.isArray(fields.title) ? fields.title[0] : fields.title || 'Product Image';
-        const mainImageFile = files.mainImage?.[0];
 
+        const mainImageFile = files.mainImage?.[0];
         if (!mainImageFile) {
             return res.status(400).json({ success: false, message: 'Main image is required.' });
         }
