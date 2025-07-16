@@ -5,7 +5,6 @@ const { formidable } = require('formidable');
 const fs = require('fs'); // Node.js built-in file system module
 
 // CORS middleware to allow cross-origin requests
-// This is crucial if your frontend is hosted on a different domain/subdomain
 const allowCors = (fn) => async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*'); // Allow all origins
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS'); // Allowed HTTP methods
@@ -19,7 +18,6 @@ const allowCors = (fn) => async (req, res) => {
 
 // Helper function to parse multipart form data using formidable
 const parseForm = (req) => new Promise((resolve, reject) => {
-    // formidable({ multiples: true }) allows handling multiple files with the same field name
     const form = formidable({ multiples: true });
     form.parse(req, (err, fields, files) => {
         if (err) {
@@ -33,35 +31,37 @@ const parseForm = (req) => new Promise((resolve, reject) => {
 
 // Helper function to upload an image buffer to GitHub
 const uploadToGitHub = async (octokit, fileBuffer, owner, repo, altText = '') => {
-    // Convert the image buffer to WebP format for optimization
-    // quality: 80 balances file size and visual quality
-    const webpBuffer = await sharp(fileBuffer).webp({ quality: 80 }).toBuffer();
-    
-    // Generate a random 10-digit number for the filename
-    const randomNumber = Math.floor(1000000000 + Math.random() * 9000000000); // Generates a 10-digit number
-    const fileName = `${randomNumber}.webp`;
-    const githubFilePath = `public/image/generated/${fileName}`; // Define the path in the GitHub repo
+    try {
+        // Convert the image buffer to WebP format for optimization
+        const webpBuffer = await sharp(fileBuffer).webp({ quality: 80 }).toBuffer();
+        
+        // Generate a random 10-digit number for the filename
+        const randomNumber = Math.floor(1000000000 + Math.random() * 9000000000); // Generates a 10-digit number
+        const fileName = `${randomNumber}.webp`;
+        const githubFilePath = `public/image/generated/${fileName}`; // Define the path in the GitHub repo
 
-    // Create or update the file content in the GitHub repository
-    // Since we are creating unique filenames, we are always doing a 'create' operation.
-    // The 'sha' parameter is omitted because we are not updating an existing file with a known SHA.
-    await octokit.repos.createOrUpdateFileContents({
-        owner,
-        repo,
-        path: githubFilePath,
-        message: `feat: Add generated image ${fileName} (${altText.substring(0, 50)}...)`, // Commit message with truncated alt text
-        content: webpBuffer.toString('base64'), // Base64 encode the image buffer
-        committer: {
-            name: 'Vercel Post Generator',
-            email: 'vercel-bot@dms-eshop.com',
-        },
-        author: {
-            name: 'Vercel Post Generator',
-            email: 'vercel-bot@dms-eshop.com',
-        },
-    });
+        // Create or update the file content in the GitHub repository
+        await octokit.repos.createOrUpdateFileContents({
+            owner,
+            repo,
+            path: githubFilePath,
+            message: `feat: Add generated image ${fileName} (${altText.substring(0, 50)}...)`, // Commit message with truncated alt text
+            content: webpBuffer.toString('base64'), // Base64 encode the image buffer
+            committer: {
+                name: 'Vercel Post Generator',
+                email: 'vercel-bot@dms-eshop.com',
+            },
+            author: {
+                name: 'Vercel Post Generator',
+                email: 'vercel-bot@dms-eshop.com',
+            },
+        });
 
-    return githubFilePath; // Return the path where the file was uploaded
+        return githubFilePath; // Return the path where the file was uploaded
+    } catch (uploadError) {
+        console.error('Error uploading to GitHub:', uploadError);
+        throw new Error(`Failed to upload image to GitHub: ${uploadError.message || uploadError}`);
+    }
 };
 
 // Main handler function for the API endpoint
@@ -70,7 +70,6 @@ async function handler(req, res) {
         const { GITHUB_TOKEN } = process.env; // Get GitHub token from environment variables
 
         if (!GITHUB_TOKEN) {
-            // If the token is not configured, return a server error
             return res.status(500).json({ success: false, message: 'Server environment variable GITHUB_TOKEN is not configured.' });
         }
 
@@ -81,42 +80,29 @@ async function handler(req, res) {
         const octokit = new Octokit({ auth: GITHUB_TOKEN }); // Initialize Octokit with the token
         const { fields, files } = await parseForm(req); // Parse the incoming form data to get fields and files
 
-        // Ensure productTitle is a string, handle cases where formidable might return an array
         const productTitle = Array.isArray(fields.title) ? fields.title[0] : fields.title || 'Product Image';
 
-        // Handle the main product image
-        // formidable stores single files under `files.fieldName[0]`
         const mainImageFile = files.mainImage?.[0]; 
         if (!mainImageFile) {
-            // If no main image is provided, return a bad request error
             return res.status(400).json({ success: false, message: 'Main image is required.' });
         }
 
-        // Read the main image file content from the temporary path provided by formidable
         const mainImageContent = fs.readFileSync(mainImageFile.filepath);
-        // Upload the main image to GitHub
-        const mainImagePath = await uploadToGitHub(octokit, mainImageContent, GITHUB_OWNER, GITHUB_REPO, productTitle);
-        const mainImageUrl = `${CUSTOM_DOMAIN}/${mainImagePath}`; // Construct the full URL for the main image
+        const mainImagePath = await uploadToGitHub(octokit, mainImageContent, GITHUB_OWNER, GITHUB_REPO, productTitle); // Corrected: GITHUB_REPO
+        const mainImageUrl = `${CUSTOM_DOMAIN}/${mainImagePath}`;
 
-        // Handle thumbnail images (if any)
         let thumbImageUrls = [];
-        // formidable stores multiple files with the same name as an array
-        // Ensure thumbImages is an array and filter out any potential undefined/null entries
         const thumbImageFiles = Array.isArray(files.thumbImages) ? files.thumbImages.filter(Boolean) : (files.thumbImages ? [files.thumbImages] : []);
         
         if (thumbImageFiles.length > 0) {
-            // Create an array of promises for uploading each thumbnail
             const uploadPromises = thumbImageFiles.map((file, index) => {
-                const content = fs.readFileSync(file.filepath); // Read thumbnail content
-                return uploadToGitHub(octokit, content, GITHUB_OWNER, GWEB_REPO, `${productTitle} Thumbnail ${index + 1}`); // Upload thumbnail
+                const content = fs.readFileSync(file.filepath);
+                return uploadToGitHub(octokit, content, GITHUB_OWNER, GITHUB_REPO, `${productTitle} Thumbnail ${index + 1}`); // Corrected: GITHUB_REPO
             });
-            // Wait for all thumbnail uploads to complete
             const thumbPaths = await Promise.all(uploadPromises);
-            // Construct full URLs for all thumbnails
             thumbImageUrls = thumbPaths.map(path => `${CUSTOM_DOMAIN}/${path}`);
         }
 
-        // Return a successful response with the URLs of uploaded images
         res.status(200).json({
             success: true,
             mainImageUrl,
@@ -124,11 +110,9 @@ async function handler(req, res) {
         });
 
     } catch (error) {
-        // Log the error and send an internal server error response
-        console.error('Processing Error:', error);
+        console.error('Processing Error in handler:', error); // More specific error log
         res.status(500).json({ success: false, message: error.message || 'An internal server error occurred.' });
     }
 }
 
-// Export the handler wrapped with the CORS middleware
 module.exports = allowCors(handler);
